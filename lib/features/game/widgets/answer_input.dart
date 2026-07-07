@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:mental_math_marathon/app/constants.dart';
 
 class AnswerInput extends StatefulWidget {
@@ -11,6 +12,7 @@ class AnswerInput extends StatefulWidget {
 }
 
 class _AnswerInputState extends State<AnswerInput> {
+  final FocusNode _focusNode = FocusNode();
   String _input = '';
   bool _isNegative = false;
 
@@ -48,11 +50,65 @@ class _AnswerInputState extends State<AnswerInput> {
     });
   }
 
+  KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+
+    final key = event.logicalKey;
+
+    final keyId = key.keyId;
+    if (keyId >= LogicalKeyboardKey.digit0.keyId && keyId <= LogicalKeyboardKey.digit9.keyId) {
+      final digit = String.fromCharCode(keyId & 0xFFFF);
+      _onDigit(digit);
+      return KeyEventResult.handled;
+    }
+
+    if (keyId >= LogicalKeyboardKey.numpad0.keyId && keyId <= LogicalKeyboardKey.numpad9.keyId) {
+      final digit = String.fromCharCode(keyId & 0xFFFF);
+      _onDigit(digit);
+      return KeyEventResult.handled;
+    }
+
+    if (key == LogicalKeyboardKey.backspace) {
+      _onBackspace();
+      return KeyEventResult.handled;
+    }
+
+    if (key == LogicalKeyboardKey.enter || key == LogicalKeyboardKey.numpadEnter) {
+      _onSubmit();
+      return KeyEventResult.handled;
+    }
+
+    if (key == LogicalKeyboardKey.minus || key == LogicalKeyboardKey.numpadSubtract) {
+      _onToggleSign();
+      return KeyEventResult.handled;
+    }
+
+    return KeyEventResult.ignored;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _focusNode.requestFocus();
+  }
+
+  @override
+  void dispose() {
+    _focusNode.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
+    return Focus(
+      focusNode: _focusNode,
+      autofocus: true,
+      onKeyEvent: _handleKeyEvent,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
         Container(
           margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
@@ -168,7 +224,8 @@ class _AnswerInputState extends State<AnswerInput> {
             ],
           ),
         ),
-      ],
+        ],
+      ),
     );
   }
 }
