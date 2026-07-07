@@ -6,7 +6,7 @@
     "background_color": "#0A1628",
     "theme_color": "#0A1628",
     "description": "Train your brain. Race against time. Master mental math.",
-    "orientation": "portrait-primary",
+    "orientation": "any",
     "prefer_related_applications": false,
     "icons": [
         {

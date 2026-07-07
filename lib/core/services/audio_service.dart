@@ -2,6 +2,7 @@ import 'dart:math';
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'crazy_games_sdk_service.dart';
 
 class AudioService {
   final AudioPlayer _effectPlayer;
@@ -129,7 +130,15 @@ class AudioService {
     _currentMusicPath = null;
   }
 
-  void setEnabled(bool enabled) => _soundEnabled = enabled;
+  void setEnabled(bool enabled) {
+    _soundEnabled = enabled;
+    final sdk = CrazyGamesSdkService.instance;
+    if (enabled) {
+      sdk.unmuteAudio();
+    } else {
+      sdk.muteAudio();
+    }
+  }
 
   void setMusicEnabled(bool enabled) {
     _musicEnabled = enabled;

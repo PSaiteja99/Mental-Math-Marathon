@@ -28,6 +28,15 @@ external JSPromise<JSAny?> _requestAd(String type);
 @JS('CrazyGames.SDK.social.requestInviteUrl')
 external JSPromise<JSString?> _requestInviteUrl();
 
+@JS('CrazyGames.SDK.sound.mute')
+external void _soundMute();
+
+@JS('CrazyGames.SDK.sound.unmute')
+external void _soundUnmute();
+
+@JS('CrazyGames.SDK.sound.getMute')
+external bool _soundGetMute();
+
 class CrazyGamesSdkService {
   CrazyGamesSdkService._();
   static final CrazyGamesSdkService instance = CrazyGamesSdkService._();
@@ -97,5 +106,20 @@ class CrazyGamesSdkService {
     } catch (_) {
       return null;
     }
+  }
+
+  void muteAudio() {
+    if (!isAvailable) return;
+    try { _soundMute(); } catch (_) {}
+  }
+
+  void unmuteAudio() {
+    if (!isAvailable) return;
+    try { _soundUnmute(); } catch (_) {}
+  }
+
+  bool get isMuted {
+    if (!isAvailable) return false;
+    try { return _soundGetMute(); } catch (_) { return false; }
   }
 }
