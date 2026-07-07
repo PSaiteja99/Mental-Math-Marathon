@@ -24,7 +24,7 @@ jobs:
           channel: stable
 
       - name: Build web
-        run: flutter build web --wasm --base-href /Mental-Math-Marathon/
+        run: flutter build web --base-href /Mental-Math-Marathon/
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
