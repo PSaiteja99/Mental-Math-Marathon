@@ -28,7 +28,8 @@ class _SplashScreenState extends State<SplashScreen> {
           children: [
             LayoutBuilder(
               builder: (context, constraints) {
-                final size = constraints.maxWidth * 1.0;
+                final maxSize = constraints.maxWidth * 0.6;
+                final size = maxSize.clamp(100.0, 200.0);
                 return ClipOval(
                   child: Image.asset(
                     'assets/images/App_Logo.webp',
@@ -40,11 +41,17 @@ class _SplashScreenState extends State<SplashScreen> {
               },
             ),
             const SizedBox(height: 24),
-            Text(
-              'Mental Math Marathon',
-              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                fontWeight: FontWeight.bold,
-                color: AppConstants.primaryBlue,
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 32),
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  'Mental Math Marathon',
+                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: AppConstants.primaryBlue,
+                  ),
+                ),
               ),
             ),
           ],

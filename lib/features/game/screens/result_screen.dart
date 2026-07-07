@@ -6,7 +6,9 @@ import 'package:go_router/go_router.dart';
 import 'package:lottie/lottie.dart';
 import 'package:mental_math_marathon/app/constants.dart';
 import 'package:mental_math_marathon/core/services/audio_service.dart';
+import 'package:mental_math_marathon/core/services/ad_service.dart';
 import 'package:mental_math_marathon/core/utils/extensions.dart';
+import 'package:mental_math_marathon/models/game_config.dart';
 import 'package:mental_math_marathon/models/session_result.dart';
 
 class ResultScreen extends ConsumerStatefulWidget {
@@ -19,6 +21,9 @@ class ResultScreen extends ConsumerStatefulWidget {
 }
 
 class _ResultScreenState extends ConsumerState<ResultScreen> {
+  bool _xpDoubled = false;
+  bool _xpAdLoading = false;
+
   @override
   void initState() {
     super.initState();
@@ -47,7 +52,8 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
       barrierDismissible: false,
       builder: (ctx) {
         return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -79,23 +85,23 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
               Text(
                 'LEVEL UP!',
                 style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: AppConstants.warning,
-                ),
+                      fontWeight: FontWeight.bold,
+                      color: AppConstants.warning,
+                    ),
               ),
               const SizedBox(height: 8),
               Text(
                 'Level ${r.newLevel}',
                 style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
+                      fontWeight: FontWeight.bold,
+                    ),
               ),
               const SizedBox(height: 4),
               Text(
                 title,
                 style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  color: Colors.grey[600],
-                ),
+                      color: Colors.grey[600],
+                    ),
               ),
             ],
           ),
@@ -119,6 +125,28 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
     );
   }
 
+  Future<void> _onDoubleXp() async {
+    setState(() => _xpAdLoading = true);
+    final success = await AdService.instance.showRewardedAd();
+    setState(() => _xpAdLoading = false);
+    if (success && mounted) {
+      setState(() => _xpDoubled = true);
+      ref.read(audioServiceProvider).playLevelUp();
+    }
+  }
+
+  void _playAgain() {
+    final r = widget.result;
+    if (r == null) return;
+    ref.read(audioServiceProvider).playStart();
+    final config = GameConfig(
+      difficulty: r.difficulty,
+      operators: ['+', '-'],
+      gameMode: r.mode,
+    );
+    context.go('/game', extra: config);
+  }
+
   @override
   Widget build(BuildContext context) {
     final r = widget.result;
@@ -134,6 +162,7 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
     }
 
     final showConfetti = r.accuracy >= 70;
+    final displayedXp = _xpDoubled ? r.totalXp * 2 : r.totalXp;
 
     return Scaffold(
       body: Stack(
@@ -150,9 +179,13 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
                         const SizedBox(height: 16),
                         _buildHeader(context, r),
                         const SizedBox(height: 32),
-                        _buildMainStat(context, r),
+                        _buildMainStat(context, r, displayedXp),
                         const SizedBox(height: 32),
-                        _buildStatsGrid(context, r),
+                        _buildStatsGrid(context, r, displayedXp),
+                        if (!_xpDoubled && r.totalXp > 0) ...[
+                          const SizedBox(height: 16),
+                          _buildDoubleXpButton(),
+                        ],
                         const Spacer(),
                         _buildActions(context),
                         const SizedBox(height: 32),
@@ -197,22 +230,24 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
         const SizedBox(height: 16),
         Text(
           isGood ? 'Great Job!' : 'Keep Practicing!',
-          style: Theme.of(context).textTheme.displayMedium?.copyWith(
-            fontWeight: FontWeight.bold,
-          ),
+          style: Theme.of(context)
+              .textTheme
+              .displayMedium
+              ?.copyWith(fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 8),
         Text(
           '${r.mode.toUpperCase()} • ${r.difficulty.toUpperCase()}',
-          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-            color: Colors.grey[600],
-          ),
+          style: Theme.of(context)
+              .textTheme
+              .bodyLarge
+              ?.copyWith(color: Colors.grey[600]),
         ),
       ],
     );
   }
 
-  Widget _buildMainStat(BuildContext context, SessionResult r) {
+  Widget _buildMainStat(BuildContext context, SessionResult r, int displayedXp) {
     return Card(
       elevation: 8,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
@@ -235,31 +270,57 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
             Text(
               '${r.cph}',
               style: Theme.of(context).textTheme.displayLarge?.copyWith(
-                fontWeight: FontWeight.bold,
-                color: AppConstants.primaryBlue,
-              ),
+                    fontWeight: FontWeight.bold,
+                    color: AppConstants.primaryBlue,
+                  ),
             ),
             const SizedBox(height: 4),
             Text(
               'Calculations Per Hour',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Colors.grey[600],
-              ),
+              style: Theme.of(context)
+                  .textTheme
+                  .bodyMedium
+                  ?.copyWith(color: Colors.grey[600]),
             ),
             const SizedBox(height: 8),
             Text(
               '${r.totalQuestions} questions in ${r.elapsedSeconds.round().toHms}',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Colors.grey[500],
-              ),
+              style: Theme.of(context)
+                  .textTheme
+                  .bodySmall
+                  ?.copyWith(color: Colors.grey[500]),
             ),
+            if (_xpDoubled)
+              Container(
+                margin: const EdgeInsets.only(top: 12),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                decoration: BoxDecoration(
+                  color: AppConstants.warning.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.auto_awesome, size: 16, color: AppConstants.warning),
+                    SizedBox(width: 6),
+                    Text(
+                      'XP DOUBLED!',
+                      style: TextStyle(
+                        color: AppConstants.warning,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildStatsGrid(BuildContext context, SessionResult r) {
+  Widget _buildStatsGrid(BuildContext context, SessionResult r, int displayedXp) {
     return Column(
       children: [
         Row(
@@ -273,14 +334,14 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
               ),
             ),
             const SizedBox(width: 12),
-              Expanded(
-                child: _ResultStatCard(
-                  label: 'Level',
-                  value: '${r.newLevel}',
-                  color: AppConstants.primaryBlue,
-                  icon: Icons.stars_rounded,
-                ),
+            Expanded(
+              child: _ResultStatCard(
+                label: 'Level',
+                value: '${r.newLevel}',
+                color: AppConstants.primaryBlue,
+                icon: Icons.stars_rounded,
               ),
+            ),
           ],
         ),
         const SizedBox(height: 12),
@@ -320,7 +381,7 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
             Expanded(
               child: _ResultStatCard(
                 label: 'XP Earned',
-                value: '+${r.totalXp}',
+                value: '+$displayedXp',
                 color: AppConstants.secondaryNightBlue,
                 icon: Icons.bolt_rounded,
               ),
@@ -331,19 +392,55 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
     );
   }
 
+  Widget _buildDoubleXpButton() {
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton.icon(
+        onPressed: _xpAdLoading ? null : _onDoubleXp,
+        icon: _xpAdLoading
+            ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Icon(Icons.auto_awesome_rounded, size: 18),
+        label: Text(_xpAdLoading ? 'Loading Ad...' : 'Double XP (Watch Ad)'),
+        style: OutlinedButton.styleFrom(
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          foregroundColor: AppConstants.warning,
+          side: BorderSide(color: AppConstants.warning.withValues(alpha: 0.5)),
+        ),
+      ),
+    );
+  }
+
   Widget _buildActions(BuildContext context) {
     return Column(
       children: [
-                const SizedBox(height: 12),
-
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: () {
-                ref.read(audioServiceProvider).playHome();
-                ref.read(audioServiceProvider).playMenuMusic();
-                context.go('/home');
-              },
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: _playAgain,
+            icon: const Icon(Icons.replay_rounded),
+            label: const Text('Play Again'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppConstants.primaryBlue,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: () {
+              ref.read(audioServiceProvider).playHome();
+              ref.read(audioServiceProvider).playMenuMusic();
+              AdService.instance.onReturnHome();
+              context.go('/home');
+            },
             icon: const Icon(Icons.home_rounded),
             label: const Text('Back to Home'),
             style: ElevatedButton.styleFrom(
@@ -352,15 +449,15 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
           ),
         ),
         const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: () {
-                  ref.read(audioServiceProvider).playStatistics();
-                  ref.read(audioServiceProvider).playMenuMusic();
-                  context.go('/statistics');
-                },
-            icon: const Icon(Icons.replay_rounded),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: () {
+              ref.read(audioServiceProvider).playStatistics();
+              ref.read(audioServiceProvider).playMenuMusic();
+              context.go('/statistics');
+            },
+            icon: const Icon(Icons.bar_chart_rounded),
             label: const Text('Your Progress'),
             style: OutlinedButton.styleFrom(
               padding: const EdgeInsets.symmetric(vertical: 16),
@@ -370,7 +467,6 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
       ],
     );
   }
-
 }
 
 class BoxingAnimation extends ConsumerStatefulWidget {
@@ -444,7 +540,9 @@ class BoxingAnimationState extends ConsumerState<BoxingAnimation> {
         width: widget.width,
         height: widget.width * 1080 / 1384,
         child: Image.asset(
-          isDark ? 'assets/images/BoxingBlack_15x.webp' : 'assets/images/BoxingWhite_15x.webp',
+          isDark
+              ? 'assets/images/BoxingBlack_15x.webp'
+              : 'assets/images/BoxingWhite_15x.webp',
           fit: BoxFit.cover,
         ),
       ),
@@ -479,16 +577,17 @@ class _ResultStatCard extends StatelessWidget {
             Text(
               value,
               style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                fontWeight: FontWeight.bold,
-                color: color,
-              ),
+                    fontWeight: FontWeight.bold,
+                    color: color,
+                  ),
             ),
             const SizedBox(height: 4),
             Text(
               label,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Colors.grey[600],
-              ),
+              style: Theme.of(context)
+                  .textTheme
+                  .bodySmall
+                  ?.copyWith(color: Colors.grey[600]),
               textAlign: TextAlign.center,
             ),
           ],

@@ -1,9 +1,9 @@
-import 'package:device_preview_plus/device_preview_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'app/app.dart';
 import 'core/services/notification_service.dart';
+import 'core/services/crazy_games_sdk_service.dart';
 import 'providers/stats_provider.dart';
 
 void main() async {
@@ -20,14 +20,14 @@ void main() async {
 }
 
 Widget _buildApp(SharedPreferences prefs) {
-  final app = ProviderScope(
+  final sdk = CrazyGamesSdkService.instance;
+  sdk.init();
+  sdk.gameLoadingStart();
+
+  return ProviderScope(
     overrides: [
       sharedPreferencesProvider.overrideWithValue(prefs),
     ],
     child: const MentalMathsMarathonApp(),
-  );
-  return DevicePreview(
-    enabled: true,
-    builder: (context) => app,
   );
 }

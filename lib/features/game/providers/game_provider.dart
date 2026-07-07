@@ -13,6 +13,10 @@ class GameState {
   final bool isPaused;
   final int timeDisplaySeconds;
   final bool isQuestionsMode;
+  final int? hintDigit;
+  final bool xpDoubled;
+  final int continuesUsed;
+  final bool isTimeUp;
 
   const GameState({
     this.currentQuestion,
@@ -23,6 +27,10 @@ class GameState {
     this.isPaused = false,
     this.timeDisplaySeconds = 0,
     this.isQuestionsMode = false,
+    this.hintDigit,
+    this.xpDoubled = false,
+    this.continuesUsed = 0,
+    this.isTimeUp = false,
   });
 
   GameState copyWith({
@@ -34,6 +42,11 @@ class GameState {
     bool? isPaused,
     int? timeDisplaySeconds,
     bool? isQuestionsMode,
+    int? hintDigit,
+    bool? xpDoubled,
+    int? continuesUsed,
+    bool? isTimeUp,
+    bool clearHint = false,
   }) {
     return GameState(
       currentQuestion: currentQuestion ?? this.currentQuestion,
@@ -44,6 +57,10 @@ class GameState {
       isPaused: isPaused ?? this.isPaused,
       timeDisplaySeconds: timeDisplaySeconds ?? this.timeDisplaySeconds,
       isQuestionsMode: isQuestionsMode ?? this.isQuestionsMode,
+      hintDigit: clearHint ? null : (hintDigit ?? this.hintDigit),
+      xpDoubled: xpDoubled ?? this.xpDoubled,
+      continuesUsed: continuesUsed ?? this.continuesUsed,
+      isTimeUp: isTimeUp ?? this.isTimeUp,
     );
   }
 }
@@ -55,6 +72,8 @@ class GameNotifier extends StateNotifier<GameState> {
   int _totalTimeLimit = 0;
 
   GameNotifier() : super(const GameState());
+
+  GameEngine get engine => _engine;
 
   void startGame(GameConfig config) {
     _engine.startGame(config);
@@ -75,13 +94,43 @@ class GameNotifier extends StateNotifier<GameState> {
     if (!state.isRunning || state.isPaused) return;
     _engine.submitAnswer(answer);
     final stats = _engine.getStats();
-    state = state.copyWith(stats: stats, cph: stats.cph);
+    state = state.copyWith(
+      stats: stats,
+      cph: stats.cph,
+      hintDigit: null,
+    );
   }
 
   void nextQuestion() {
     if (!state.isRunning || state.isPaused) return;
     _engine.nextQuestion();
-    state = state.copyWith(currentQuestion: _engine.getCurrentQuestion());
+    state = state.copyWith(
+      currentQuestion: _engine.getCurrentQuestion(),
+      hintDigit: null,
+    );
+  }
+
+  void useHint() {
+    if (!state.isRunning || state.isPaused) return;
+    final digit = _engine.applyHint();
+    state = state.copyWith(hintDigit: digit);
+  }
+
+  void doubleXp() {
+    _engine.setXpDoubled(true);
+    state = state.copyWith(xpDoubled: true);
+  }
+
+  void addExtraTime(int seconds) {
+    _engine.addExtraTime(seconds);
+    if (_timeRemaining != null) {
+      _timeRemaining = _timeRemaining! + seconds;
+    }
+  }
+
+  void addContinue() {
+    _engine.addContinue();
+    state = state.copyWith(continuesUsed: state.continuesUsed + 1);
   }
 
   void pauseGame() {
@@ -125,8 +174,8 @@ class GameNotifier extends StateNotifier<GameState> {
         _timeRemaining = _timeRemaining! - 1;
         if (_timeRemaining! <= 0) {
           _timeRemaining = 0;
-          _engine.endGame();
-          endGame();
+          _timer?.cancel();
+          state = state.copyWith(isPaused: true, isTimeUp: true);
           return;
         }
       }
@@ -149,6 +198,7 @@ class GameNotifier extends StateNotifier<GameState> {
   }
 }
 
-final gameProvider = StateNotifierProvider.autoDispose<GameNotifier, GameState>((ref) {
+final gameProvider =
+    StateNotifierProvider.autoDispose<GameNotifier, GameState>((ref) {
   return GameNotifier();
 });

@@ -4,8 +4,10 @@ import 'package:go_router/go_router.dart';
 import 'package:lottie/lottie.dart';
 import 'package:mental_math_marathon/app/constants.dart';
 import 'package:mental_math_marathon/core/services/audio_service.dart';
+import 'package:mental_math_marathon/core/widgets/daily_reward_dialog.dart';
 import 'package:mental_math_marathon/features/game/screens/result_screen.dart';
 import 'package:mental_math_marathon/features/home/providers/home_provider.dart';
+import 'package:mental_math_marathon/providers/stats_provider.dart';
 import 'package:mental_math_marathon/features/home/widgets/level_card.dart';
 import 'package:mental_math_marathon/features/home/widgets/mode_card.dart';
 import 'package:mental_math_marathon/features/home/widgets/quick_stats.dart';
@@ -30,6 +32,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(audioServiceProvider).playMenuMusic();
+      DailyRewardDialog.showIfAvailable(
+        context,
+        ref,
+        onClaimed: () => ref.read(homeStatsRefreshProvider.notifier).state++,
+      );
     });
   }
 

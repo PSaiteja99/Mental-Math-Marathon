@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mental_math_marathon/app/constants.dart';
 import 'package:mental_math_marathon/core/services/audio_service.dart';
+import 'package:mental_math_marathon/core/services/ad_service.dart';
+import 'package:mental_math_marathon/core/services/crazy_games_sdk_service.dart';
 import 'package:mental_math_marathon/features/game/engine/score_engine.dart';
 import 'package:mental_math_marathon/features/game/providers/game_provider.dart';
 import 'package:mental_math_marathon/features/game/providers/session_provider.dart';
@@ -36,18 +38,24 @@ class _GameScreenState extends ConsumerState<GameScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
+
+      await AdService.instance.onGameStart();
+
       if (widget.config != null) {
         ref.read(gameProvider.notifier).startGame(widget.config!);
       }
       ref.read(audioServiceProvider).playGameMusic();
+      CrazyGamesSdkService.instance.gameplayStart();
     });
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive || state == AppLifecycleState.hidden) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.hidden) {
       final gameState = ref.read(gameProvider);
       if (gameState.isRunning && !gameState.isPaused) {
         ref.read(gameProvider.notifier).pauseGame();
@@ -80,6 +88,7 @@ class _GameScreenState extends ConsumerState<GameScreen>
     }
 
     ref.read(gameProvider.notifier).submitAnswer(answer);
+    AdService.instance.onQuestionAnswered();
 
     Future.delayed(const Duration(milliseconds: 800), () {
       if (!mounted) return;
@@ -96,6 +105,10 @@ class _GameScreenState extends ConsumerState<GameScreen>
     final stats = gameState.stats;
     if (stats == null) return;
     _navigatingToResult = true;
+
+    CrazyGamesSdkService.instance.gameplayStop();
+    AdService.instance.onGameEnded();
+    AdService.instance.happyTime();
 
     final db = ref.read(localDatabaseProvider);
     final currentStats = db.getUserStats();
@@ -123,6 +136,28 @@ class _GameScreenState extends ConsumerState<GameScreen>
     if (!mounted) return;
     ref.invalidate(statisticsProvider);
     if (context.mounted) context.go('/game/result', extra: result);
+  }
+
+  Future<void> _onContinueWithAd() async {
+    final adShown = await AdService.instance.showRewardedAd();
+    if (!adShown || !mounted) return;
+    ref.read(gameProvider.notifier).addContinue();
+    ref.read(gameProvider.notifier).addExtraTime(30);
+    ref.read(gameProvider.notifier).resumeGame();
+    CrazyGamesSdkService.instance.gameplayStart();
+  }
+
+  void _onEndFromTimeUp() {
+    ref.read(gameProvider.notifier).endGame();
+  }
+
+  Future<void> _onUseHint() async {
+    final gameState = ref.read(gameProvider);
+    if (!gameState.isRunning) return;
+
+    final adShown = await AdService.instance.showRewardedAd();
+    if (!adShown || !mounted) return;
+    ref.read(gameProvider.notifier).useHint();
   }
 
   @override
@@ -155,6 +190,11 @@ class _GameScreenState extends ConsumerState<GameScreen>
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
+                if (gameState.xpDoubled)
+                  const Padding(
+                    padding: EdgeInsets.only(right: 4),
+                    child: Icon(Icons.auto_awesome, color: AppConstants.warning, size: 18),
+                  ),
                 if (gameState.stats != null)
                   Padding(
                     padding: const EdgeInsets.only(right: 8),
@@ -171,45 +211,137 @@ class _GameScreenState extends ConsumerState<GameScreen>
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        child: Column(
-          children: [
-            const SizedBox(height: 8),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
+      body: Stack(
+        children: [
+          SingleChildScrollView(
+            child: Column(
               children: [
-                if (gameState.isQuestionsMode)
-                  const TimerWidget.elapsed()
-                else
-                  TimerWidget(totalSeconds: widget.config?.timeLimitSeconds ?? 0),
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    if (gameState.isQuestionsMode)
+                      const TimerWidget.elapsed()
+                    else
+                      TimerWidget(totalSeconds: widget.config?.timeLimitSeconds ?? 0),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                EquationCard(
+                  lastCorrect: _showResult ? _lastCorrect : null,
+                  hintDigit: gameState.hintDigit,
+                ),
+                if (_showResult)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 300),
+                      child: Text(
+                        _lastCorrect ? '✓ Correct!' : '✗ $_correctAnswer',
+                        key: ValueKey(_lastCorrect),
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context)
+                            .textTheme
+                            .displayMedium
+                            ?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              color: _lastCorrect
+                                  ? AppConstants.success
+                                  : AppConstants.error,
+                            ),
+                      ),
+                    ),
+                  ),
+                AnswerInput(onSubmit: _onSubmitAnswer),
+                const SizedBox(height: 8),
+                _buildHintButton(gameState),
+                const SizedBox(height: 16),
               ],
             ),
-            const SizedBox(height: 8),
-            EquationCard(lastCorrect: _showResult ? _lastCorrect : null),
-            if (_showResult)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 300),
-                  child: Text(
-                    _lastCorrect ? '✓ Correct!' : '✗ $_correctAnswer',
-                    key: ValueKey(_lastCorrect),
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context)
-                        .textTheme
-                        .displayMedium
-                        ?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: _lastCorrect
-                              ? AppConstants.success
-                              : AppConstants.error,
-                        ),
+          ),
+          if (gameState.isTimeUp) _buildTimeUpOverlay(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHintButton(GameState gameState) {
+    if (!gameState.isRunning || gameState.isPaused) return const SizedBox();
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: SizedBox(
+        width: double.infinity,
+        child: OutlinedButton.icon(
+          onPressed: _onUseHint,
+          icon: const Icon(Icons.lightbulb_rounded, size: 18),
+          label: Text(
+            gameState.hintDigit != null ? 'Another Hint (Watch Ad)' : 'Get Hint (Watch Ad)',
+          ),
+          style: OutlinedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            side: BorderSide(
+              color: AppConstants.warning.withValues(alpha: 0.5),
+            ),
+            foregroundColor: AppConstants.warning,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTimeUpOverlay() {
+    return Container(
+      color: Colors.black54,
+      child: Center(
+        child: Card(
+          margin: const EdgeInsets.all(32),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.timer_off_rounded, size: 64, color: AppConstants.error),
+                const SizedBox(height: 16),
+                Text(
+                  'Time\'s Up!',
+                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
-              ),
-            AnswerInput(onSubmit: _onSubmitAnswer),
-            const SizedBox(height: 16),
-          ],
+                const SizedBox(height: 8),
+                Text(
+                  'Continue with +30 seconds?',
+                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                    color: Colors.grey[600],
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: _onContinueWithAd,
+                    icon: const Icon(Icons.play_circle_rounded),
+                    label: const Text('Continue (Watch Ad)'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppConstants.primaryBlue,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton(
+                    onPressed: _onEndFromTimeUp,
+                    child: const Text('End Game'),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );

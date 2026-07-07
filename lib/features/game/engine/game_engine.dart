@@ -16,6 +16,10 @@ class GameEngine {
   int _questionsAnswered = 0;
   Stopwatch? _stopwatch;
   bool _isRunning = false;
+  bool _xpDoubled = false;
+  int _hintsUsed = 0;
+  int _continuesUsed = 0;
+  int _extraTimeAdded = 0;
 
   bool get isRunning => _isRunning;
   int get correctCount => _correctCount;
@@ -25,6 +29,10 @@ class GameEngine {
   int get totalXp => _totalXp;
   int get questionsAnswered => _questionsAnswered;
   double get elapsedSeconds => (_stopwatch?.elapsedMilliseconds ?? 0) / 1000.0;
+  int get hintsUsed => _hintsUsed;
+  int get continuesUsed => _continuesUsed;
+  int get extraTimeAdded => _extraTimeAdded;
+  bool get xpDoubled => _xpDoubled;
 
   bool get isQuestionsMode => _config?.gameMode == 'questions';
 
@@ -37,6 +45,10 @@ class GameEngine {
     _totalXp = 0;
     _questionsAnswered = 0;
     _isRunning = true;
+    _xpDoubled = false;
+    _hintsUsed = 0;
+    _continuesUsed = 0;
+    _extraTimeAdded = 0;
     _stopwatch = Stopwatch()..start();
     nextQuestion();
   }
@@ -49,7 +61,8 @@ class GameEngine {
       _correctCount++;
       _streak++;
       if (_streak > _bestStreak) _bestStreak = _streak;
-      _totalXp += ScoreEngine.calculateXp(true, _streak);
+      final xp = ScoreEngine.calculateXp(true, _streak);
+      _totalXp += _xpDoubled ? xp * 2 : xp;
     } else {
       _wrongCount++;
       _streak = 0;
@@ -65,6 +78,39 @@ class GameEngine {
   void nextQuestion() {
     if (_config == null) return;
     _currentQuestion = _generateQuestion.call(_config!);
+  }
+
+  int applyHint() {
+    if (_currentQuestion == null) return 0;
+    _hintsUsed++;
+    final answer = _currentQuestion!.answer;
+    final absAnswer = answer.abs();
+    final numDigits = absAnswer.toString().length;
+    if (numDigits <= 1) return 0;
+    final revealDigit = (_hintsUsed - 1) % numDigits;
+    final divisor = _pow(10, numDigits - 1 - revealDigit);
+    final digit = (absAnswer ~/ divisor) % 10;
+    return digit;
+  }
+
+  static int _pow(int base, int exp) {
+    int result = 1;
+    for (int i = 0; i < exp; i++) {
+      result *= base;
+    }
+    return result;
+  }
+
+  void addExtraTime(int seconds) {
+    _extraTimeAdded += seconds;
+  }
+
+  void setXpDoubled(bool v) {
+    _xpDoubled = v;
+  }
+
+  void addContinue() {
+    _continuesUsed++;
   }
 
   void endGame() {
@@ -97,6 +143,10 @@ class GameEngine {
       ),
       cph: ScoreEngine.calculateCph(_correctCount, elapsedSeconds),
       level: ScoreEngine.calculateLevel(_totalXp),
+      xpDoubled: _xpDoubled,
+      hintsUsed: _hintsUsed,
+      continuesUsed: _continuesUsed,
+      extraTimeAdded: _extraTimeAdded,
     );
   }
 }
@@ -112,6 +162,10 @@ class GameStats {
   final double accuracy;
   final int cph;
   final int level;
+  final bool xpDoubled;
+  final int hintsUsed;
+  final int continuesUsed;
+  final int extraTimeAdded;
 
   const GameStats({
     required this.correctCount,
@@ -124,5 +178,9 @@ class GameStats {
     required this.accuracy,
     required this.cph,
     required this.level,
+    this.xpDoubled = false,
+    this.hintsUsed = 0,
+    this.continuesUsed = 0,
+    this.extraTimeAdded = 0,
   });
 }
